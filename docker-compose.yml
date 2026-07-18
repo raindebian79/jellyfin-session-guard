@@ -12,4 +12,4 @@ services:
 networks:
   servicios_network:
     external: true
-    name: servicios_default
+    name: ${JELLYFIN_NETWORK_NAME:-bridge}
