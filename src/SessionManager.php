@@ -28,38 +28,62 @@ class SessionManager
             return;
         }
 
-        // Agrupar sesiones activas por nombre de usuario (ignorando mayúsculas/minúsculas)
+        // Obtener dinámicamente los IDs de los administradores reales del servidor
+        $adminUserIds = $this->client->getAdminUserIds();
+
+        // Obtener la lista de usuarios omitidos desde la configuración estática
+        $ignoredUsers = array_map('strtolower', $this->config->getIgnoreUsers());
+
+        // Agrupar sesiones activas por nombre de usuario
         $userSessions = [];
         foreach ($sessions as $session) {
             $userName = $session['UserName'] ?? null;
             $sessionId = $session['Id'] ?? null;
+            $userId = $session['UserId'] ?? null;
+            $clientName = $session['Client'] ?? ''; 
 
-            // Saltar si la sesión no tiene datos válidos o no tiene un usuario real autenticado
-            if (!$userName || !$sessionId) {
+            // Saltar si la sesión no tiene datos válidos
+            if (!$userName || !$sessionId || !$userId) {
                 continue;
             }
 
-            // DETECCIÓN DINÁMICA DE ADMINISTRADOR:
-            // Si cualquier sesión del usuario reporta que tiene rol de administrador,
-            // marcamos de forma preventiva al usuario para otorgarle inmunidad.
-            $isAdmin = $session['IsAdministrator'] ?? false;
-            if ($isAdmin) {
-                continue; 
+            // Inmunidad total si está en la lista de ignorados del config
+            if (in_array(strtolower($userName), $ignoredUsers, true)) {
+                continue;
             }
 
+            // Comprobación real: ¿El ID de este usuario pertenece a un administrador?
+            $isAdmin = in_array($userId, $adminUserIds, true);
+
+            // ====================================================================
+            // REGLA DE EXCLUSIÓN WEB
+            // ====================================================================
+            if (stripos($clientName, 'Finamp') === false) {
+                if ($isAdmin) {
+                    // Al admin se le permite usar la web de forma nativa sin molestarle
+                    continue;
+                }
+
+                $this->logger->warning("EXPULSIÓN WEB: El usuario estándar '{$userName}' intentó conectar usando '{$clientName}'. Clausurando sesión...");
+
+                $success = $this->client->disconnectSession($sessionId);
+                if ($success) {
+                    $this->logger->info("Sesión web '{$sessionId}' desconectada exitosamente.");
+                } else {
+                    $this->logger->error("No se pudo desconectar la sesión web '{$sessionId}'.");
+                }
+
+                continue;
+            }
+
+            // Si es Finamp (sea de admin o usuario común), entra al conteo de límites por cantidad
             $userSessions[strtolower($userName)][] = $session;
         }
 
-        // Procesar las sesiones de cada usuario estándar (los administradores ya fueron filtrados)
+        // Procesar límites de sesiones simultáneas en Finamp
         foreach ($userSessions as $lowercaseName => $sessionsList) {
             $realName = $sessionsList[0]['UserName'];
 
-            // Comprobar si por si acaso el nombre está explícitamente en la lista estática de ignorados
-            if (in_array(strtolower($realName), array_map('strtolower', $this->config->getIgnoreUsers()), true)) {
-                continue;
-            }
-
-            // Determinar el límite máximo (usará el default_max_sessions = 2 si no hay reglas específicas)
             $limits = $this->config->getUsersLimits();
             $maxAllowed = $limits[$realName] ?? $limits[$lowercaseName] ?? $this->config->getDefaultMaxSessions();
 
@@ -100,7 +124,7 @@ class SessionManager
             $deviceName = $session['DeviceName'] ?? 'Desconocido';
 
             $this->logger->info("Cerrando sesión excedente del usuario '{$userName}' en dispositivo '{$deviceName}' ({$clientName}).");
-            
+
             $success = $this->client->disconnectSession($sessionId);
             if ($success) {
                 $this->logger->info("Sesión '{$sessionId}' desconectada exitosamente.");
