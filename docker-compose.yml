@@ -1,0 +1,15 @@
+services:
+  jellyfin-session-guard:
+    build: .
+    container_name: jellyfin-session-guard
+    restart: always
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    networks:
+      - servicios_network
+
+networks:
+  servicios_network:
+    external: true
+    name: servicios_default

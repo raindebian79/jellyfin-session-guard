@@ -1,0 +1,11 @@
+# Configuración del entorno y credenciales (¡Seguridad primero!)
+.env
+
+# Carpetas de dependencias generadas por Composer
+vendor/
+
+# Archivos de configuración local personalizados
+config.yaml
+
+# Archivos de bitácora locales
+logs/*.log

@@ -1,0 +1,6 @@
+default_max_sessions: 2
+keep_session: newest # options: newest | oldest
+poll_interval: 30
+
+ignore_users: []
+users: {}
